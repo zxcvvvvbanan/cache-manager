@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import time
+import platform
 from pathlib import Path
 from multiprocessing.pool import ThreadPool
 
@@ -14,6 +15,15 @@ from PySide2.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem,
     QPushButton, QMessageBox, QHeaderView
 )
+
+system = platform.system()
+
+if system == "Windows":
+    platform = "Windows"
+elif system == "Darwin":
+    platform = "Mac"
+elif system == "Linux":
+    platform = "Linux"
 
 class MainWidget(QTreeWidget):
     def __init__(self, parent=None):
@@ -48,7 +58,7 @@ class CacheManager(QWidget):
 
     def populate_tree(self):
         start_time = time.time()
-        current_directory = self.seq()
+        current_directory = self.getPwd()
         try:
             self._populate_tree_with_pool(current_directory)
         except FileNotFoundError:
@@ -59,19 +69,21 @@ class CacheManager(QWidget):
 
     def _populate_tree_with_pool(self, directory):
         pool = ThreadPool()
-        pool.map(self.add_directory_to_tree_parallel, [(directory, self.tree_widget, directory)])
+        pool.map(self.addToTree_parallel, [(directory, self.tree_widget, directory)])
         pool.close()
         pool.join()
 
-    def add_directory_to_tree_parallel(self, args):
+    def addToTree_parallel(self, args):
         directory, parent_item, folder_path = args
-        self.add_directory_to_tree(directory, parent_item, folder_path)
+        self.addToTree(directory, parent_item, folder_path)
 
     def searchMatchingVersion(self):
+
         fileio_nodes = [
             node for node in hou.node("/obj").allSubChildren()
             if "filecache::2.0" in node.type().name()
         ]
+
         fileIO_dict = [
             {
                 "version": node.parm("version").eval(),
@@ -81,6 +93,7 @@ class CacheManager(QWidget):
         ]
         for entry in fileIO_dict:
             self.search_in_tree(self.tree_widget.invisibleRootItem(), entry)
+
         self.getCacheName(self.tree_widget.invisibleRootItem(), fileIO_dict)
 
     def getCacheName(self, item, entries):
@@ -89,16 +102,16 @@ class CacheManager(QWidget):
     def search_in_tree(self, item, entry):
         for i in range(item.childCount()):
             child = item.child(i)
+
             try:
-                elenm = child.parent().text(0)
-                takev = child.parent().parent().text(0)
-                elever = child.text(0)
-                if (entry.get("takev") == takev and
-                    entry.get("elenm") == elenm and
-                    entry.get("elever") == elever):
+                contextname = child.parent().text(0)
+                ver = child.text(0).removeprefix("v")
+                if (entry.get("basename") == contextname and ver == str(entry.get("version"))):
                     child.setForeground(0, QBrush(QColor(255, 165, 0)))
+
             except Exception:
                 pass
+
             self.search_in_tree(child, entry)
 
     def comment_retrieval(self, item_path):
@@ -119,27 +132,30 @@ class CacheManager(QWidget):
         except FileNotFoundError:
             return 0
 
-    def add_directory_to_tree(self, directory, parent_item, folder_path, depth=0):
+    def addToTree(self, directory, parent_item, folder_path, depth=0):
         for item in os.listdir(directory):
             item_path = os.path.join(directory, item)
             item_name = os.path.basename(item_path)
             
             if os.path.isdir(item_path):
-                size = self.get_directory_size(item_path)
+                size = self.getDirsize(item_path)
                 date = datetime.datetime.fromtimestamp(os.path.getmtime(item_path)).strftime('%m-%d  %H:%M')
                 has_subdirs = any(os.path.isdir(os.path.join(item_path, d)) for d in os.listdir(item_path))
                 comment = "" if has_subdirs else self.comment_retrieval(item_path)
                 protect = 0 if has_subdirs else self.protect_retrieval(item_path)
                 tree_item = QTreeWidgetItem(parent_item, [item_name, comment, self.format_size(size), date])
+
                 if protect == 1:
-                    tree_item.setIcon(0, QIcon("/stdrepo/PFX/TD/scripts/fx_cache_manager/lock.svg"))
+                    tree_item.setIcon(0, QIcon("/lock.svg"))
                     tree_item.setFlags(tree_item.flags() & ~Qt.ItemIsSelectable)
+
                 tree_item.setExpanded(True)
                 tree_item.setData(0, Qt.UserRole, os.path.join(folder_path, item_name))
-                self.add_directory_to_tree(item_path, tree_item, folder_path, depth + 1)
+                self.addToTree(item_path, tree_item, folder_path, depth + 1)
 
-    def get_directory_size(self, path):
+    def getDirsize(self, path):
         total_size = 0
+
         for dirpath, _, filenames in os.walk(path):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
@@ -153,7 +169,7 @@ class CacheManager(QWidget):
             size /= 1024.0
         return f"{size:.1f} TB"
 
-    def confirm_delete_selected_folder(self):
+    def confirmMsgBox(self):
         selected_items = self.tree_widget.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Warning", "You have not selected any folder")
@@ -174,7 +190,7 @@ class CacheManager(QWidget):
             path.insert(0, item.text(0))
             item = item.parent()
         cachepath = '/'.join(path)
-        abspath = os.path.join(self.seq(), cachepath)
+        abspath = os.path.join(self.getPwd(), cachepath)
         if os.path.exists(abspath) and check.childCount() == 0:
             for col in range(check.columnCount()):
                 check.setForeground(col, QBrush(QColor(111, 111, 111)))
@@ -200,16 +216,32 @@ class CacheManager(QWidget):
         else:
             hou.ui.displayMessage("Operation canceled. $CACHEPATH was not set.")
 
-    def seq(self):
+    def getPwd(self):
         aliassetcheck = hou.getenv("CACHEPATH")
         if not aliassetcheck:
             self.setCachePath()
             aliassetcheck = hou.getenv("CACHEPATH")
         return aliassetcheck
 
+    def openFolder(self):
+
+        import platform
+        
+        OS = platform.system().lower()
+        
+        if 'windows' in OS:
+            opener = 'start'
+        elif 'osx' in OS or 'darwin' in OS:
+            opener = 'open'
+        else:
+            opener = 'xdg-open'
+        return '{opener} {filepath}'.format(opener=opener, filepath=self.getPwd())     
+    
+        
+        
     def _set_style(self):
         self.setWindowTitle("Houdini Cache Manager by Yongjun Cho")
-        self.setMinimumWidth(1400)
+        self.setMinimumWidth(1000)
         self.setMinimumHeight(700)
         self.setMaximumWidth(1700)
         self.setMaximumHeight(1000)
@@ -219,7 +251,7 @@ class CacheManager(QWidget):
         welcome_label.setAlignment(Qt.AlignLeft)
         welcome_label.setStyleSheet("font-size: 17px; font-weight: bold; margin-bottom: 1px; color: rgb(133,133,133)")
         layout.addWidget(welcome_label)
-        welcome_label2 = QLabel(f"Target : {self.seq()}")
+        welcome_label2 = QLabel(f"Cache Location: {self.getPwd()}")
         welcome_label2.setAlignment(Qt.AlignLeft)
         welcome_label2.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 3px;")
         layout.addWidget(welcome_label2)
@@ -228,16 +260,25 @@ class CacheManager(QWidget):
         self.tree_widget.setHeaderLabels(["name", "comment", "size", "date"])
         self.tree_widget.setStyleSheet("background-color: rgb(31,31,31);")
         header = self.tree_widget.header()
+
         for column in range(header.count()):
             header.setSectionResizeMode(column, QHeaderView.Stretch)
+
         self.delete_button = QPushButton("Delete Selected")
-        self.delete_button.clicked.connect(self.confirm_delete_selected_folder)
+        self.delete_button.clicked.connect(self.confirmMsgBox)
         self.refresh = QPushButton("Refresh")
         self.refresh.clicked.connect(self.refreshTree)
+        self.change_cachepath = QPushButton("Change ENV")
+        self.change_cachepath.clicked.connect(self.setCachePath)
+        self.open_folder = QPushButton("📁")
+        self.open_folder.clicked.connect(self.openFolder)
+
         layout.addWidget(self.tree_widget)
         self.tree_widget.setSortingEnabled(True)
         button_layout.addWidget(self.delete_button, 8)
         button_layout.addWidget(self.refresh, 2)
+        button_layout.addWidget(self.open_folder, 2)
+        button_layout.addWidget(self.change_cachepath, 2)
         layout.addLayout(button_layout)
 
 dialog = CacheManager()
