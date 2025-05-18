@@ -2,7 +2,7 @@
 
 A custom PySide2-based tool for SideFX Houdini that visually manages simulation cache directories. It enables quick inspection, safe deletion, and version matching of cache folders directly within Houdini.
 
-![screenshot](docs/screenshot.png) <!-- Replace or remove if no image available -->
+![screenshot](test.png) <!-- Replace or remove if no image available -->
 
 ---
 
