@@ -55,7 +55,7 @@ class CacheManager(QWidget):
             Path(current_directory).mkdir(parents=True, exist_ok=True)
             self._populate_tree_with_pool(current_directory)
         self.searchMatchingVersion()
-        print(f"Tree populated in {time.time() - start_time:.2f}s")
+        #print(f"Tree populated in {time.time() - start_time:.2f}s")
 
     def _populate_tree_with_pool(self, directory):
         pool = ThreadPool()
